@@ -1,13 +1,12 @@
-# Ignore binary
+# Ignore build artifacts
+build/
+
+# Ignore local thumbnail assets/artifacts
+assets/*
+output/*.png
 
 # Ignore coverage reports
 coverage.out
 
 # Ignore test output
-testdata/output/a
-
-# Ignore generated thumbnail files
-output/*.png
-
-# Ignore generated thumbnail files
-output/*.png
+testdata/output/*

@@ -4,6 +4,7 @@ go 1.19
 
 require (
 	github.com/SkyMack/image-add-borders v0.0.2
+	github.com/SkyMack/imgutil v0.0.2
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/sirupsen/logrus v1.9.0
@@ -23,3 +24,5 @@ require (
 )
 
 replace github.com/SkyMack/image-add-borders => ../image-add-borders
+
+replace github.com/SkyMack/imgutil => ../imgutil

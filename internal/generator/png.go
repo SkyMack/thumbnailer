@@ -8,17 +8,20 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
-	borders "github.com/SkyMack/image-add-borders"
-	"github.com/golang/freetype"
+	"github.com/SkyMack/imgutil"
+	"github.com/golang/freetype/truetype"
 	"github.com/hashicorp/go-multierror"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/image/font"
+	"golang.org/x/image/math/fixed"
 )
 
 const (
@@ -37,12 +40,15 @@ const (
 	seqStartFlagName        = "seq-start"
 	textLayerHeightFlagName = "text-layer-height"
 	textLayerWidthFlagName  = "text-layer-width"
+
+	fontDPI                 = 300
 )
 
 var (
 	bgImage *image.NRGBA
 	conf    Config
-	ftCtx   = freetype.NewContext()
+	debug bool
+	parsedFont *truetype.Font
 )
 
 type thumbnail struct {
@@ -69,6 +75,12 @@ type Config struct {
 	numStart              int
 	textImgHeight         int
 	textImgWidth          int
+}
+
+func init() {
+	if log.GetLevel() == log.DebugLevel {
+		debug = true
+	}
 }
 
 func addGeneratePngFlags(cmdFlags *pflag.FlagSet) {
@@ -111,10 +123,10 @@ func AddCmdGeneratePng(rootCmd *cobra.Command) {
 			if err := checkConfig(conf); err != nil {
 				return err
 			}
-			if err := configFreetype(conf.fontFilePath); err != nil {
+			if err := importBackground(conf.bgImageFilePath); err != nil {
 				return err
 			}
-			if err := importBackground(conf.bgImageFilePath); err != nil {
+			if err := parseFontFile(); err != nil {
 				return err
 			}
 
@@ -221,7 +233,7 @@ func createConfigFromFlags(flags *pflag.FlagSet) error {
 	if err != nil {
 		return err
 	}
-	//fontColorRHex, fontColorGHex, fontColorBHex :=
+
 	config := Config{
 		baseName:              baseName,
 		bgImageFilePath:       bgImageFilePath,
@@ -263,8 +275,21 @@ func checkConfig(config Config) error {
 func setConf(config Config) {
 	conf = config
 	log.WithFields(log.Fields{
-		"conf": fmt.Sprintf("%v", conf),
-	}).Debug("config")
+		"conf": fmt.Sprintf("%+v", conf),
+	}).Debug("running config")
+}
+
+func parseFontFile() error {
+	fontBytes, err := os.ReadFile(conf.fontFilePath)
+	if err!=nil {
+		return err
+	}
+	parsedFont, err = truetype.Parse(fontBytes)
+	if err!=nil {
+		return err
+	}
+
+	return nil
 }
 
 // generateThumbnails renders and saves thumbnails comprised of the given background image and a sequence number
@@ -277,28 +302,10 @@ func generateThumbnails() error {
 		if err := thumbNail.render(); err != nil {
 			return err
 		}
-		if err := thumbNail.export(conf.destPath); err != nil {
+		if err := thumbNail.export(); err != nil {
 			return err
 		}
 	}
-
-	return nil
-}
-
-func configFreetype(fontFilePath string) error {
-	fontBytes, err := os.ReadFile(fontFilePath)
-	if err != nil {
-		return err
-	}
-	font, err := freetype.ParseFont(fontBytes)
-	if err != nil {
-		return err
-	}
-
-	ftCtx.SetFont(font)
-	ftCtx.SetDPI(300)
-	ftCtx.SetFontSize(conf.fontSize)
-	ftCtx.SetSrc(conf.fontColor)
 
 	return nil
 }
@@ -319,32 +326,26 @@ func importBackground(filepath string) error {
 }
 
 func (thumb *thumbnail) setPaddedNumberFromNumber() {
-	log.WithFields(log.Fields{
-		"conf.numDigits": conf.numDigits,
-		"thumb.number":   thumb.number,
-	}).Trace("entered setPaddedNumberFromNumber")
-
 	raw := strconv.Itoa(thumb.number)
 	rawCharCount := strings.Count(raw, "") - 1
+
 	if conf.numDigits <= 1 || rawCharCount >= conf.numDigits {
-		log.WithFields(log.Fields{
-			"thumb.number.raw_char_count": rawCharCount,
-		}).Trace("exiting setPaddedNumberFromNumber using unpadded value")
+		// No padding required (number is longer than or equal to the number of places, so no leading 0s needed)
 		thumb.paddedNumber = raw
 	}
 
-	final := raw
+	paddedNum := raw
 	for i := 1; i <= conf.numDigits-rawCharCount; i++ {
-		final = fmt.Sprintf("0%s", final)
+		paddedNum = fmt.Sprintf("0%s", paddedNum)
 	}
 
 	log.WithFields(log.Fields{
 		"conf.numDigits":              conf.numDigits,
 		"thumb.number":                thumb.number,
-		"thumb.number.padded":         final,
+		"thumb.number.padded":         paddedNum,
 		"thumb.number.raw_char_count": rawCharCount,
-	}).Debugf("setPaddedNumberFromNumber 0 padded result")
-	thumb.paddedNumber = final
+	}).Debug("setPaddedNumberFromNumber result")
+	thumb.paddedNumber = paddedNum
 }
 
 // render creates the image and the number overlay for the thumbnail
@@ -355,142 +356,81 @@ func (thumb *thumbnail) render() error {
 	// create a new, blank image
 	thumb.image = image.NewNRGBA(bgImage.Bounds())
 
-	// draw the background image onto the blank image
+	// draw the background image onto the blank
 	draw.Draw(thumb.image, bgImage.Bounds(), bgImage, image.Point{}, draw.Over)
 
-	// create a temp image to draw the text onto
-	textImg := image.NewNRGBA(image.Rect(0, 0, conf.textImgWidth, conf.textImgHeight))
-
-	// setup freetype
-	ftCtx.SetDst(textImg)
-	ftCtx.SetClip(textImg.Bounds())
-
-	// draw the sequence number onto the temp image
-	//numPosition := freetype.Pt(conf.numPosX, conf.numPosY)
-	numPosition := freetype.Pt(10+conf.fontBorderWidth, conf.textImgHeight-(10+conf.fontBorderWidth))
-	if _, err := ftCtx.DrawString(fmt.Sprintf("#%s", thumb.paddedNumber), numPosition); err != nil {
-		return nil
-	}
-	// add an outline to the text
-	borders.AddBorders(textImg, conf.fontBorderColor, conf.fontBorderWidth, conf.fontBorderAlphaThresh)
 	borderColorSoft := conf.fontBorderColor
 	borderColorSoft.A = 150
 	borderColorSofter := conf.fontBorderColor
 	borderColorSofter.A = 65
-	borders.AddBorders(textImg, borderColorSoft, 1, conf.fontBorderAlphaThresh)
-	borders.AddBorders(textImg, borderColorSofter, 1, 149)
-	if _, err := ftCtx.DrawString(fmt.Sprintf("#%s", thumb.paddedNumber), numPosition); err != nil {
-		return nil
-	}
-	textRect := calcMinRect(textImg)
 
-	if log.GetLevel() == log.DebugLevel {
+	// create a temp image to draw the text onto
+	textImg := image.NewNRGBA(image.Rect(0, 0, conf.textImgWidth, conf.textImgHeight))
+
+	// calc Y level to place the font Drawer dot at, given the font size and DPI
+	y := int(math.Ceil(conf.fontSize * fontDPI / 72))
+	mathDot := fixed.Point26_6{
+		X: fixed.I(0+2+conf.fontBorderWidth),
+		Y: fixed.I(y+((2+conf.fontBorderWidth)*2)),
+	}
+	textDrawer := &font.Drawer{
+		Dst: textImg,
+		Src: conf.fontColor,
+		Face: truetype.NewFace(ft, &truetype.Options{
+			Size: conf.fontSize,
+			DPI: fontDPI,
+			Hinting: font.HintingFull,
+		}),
+		Dot:  mathDot,
+	}
+	text := fmt.Sprintf("#%v", thumb.paddedNumber)
+	// draw the sequence number onto the temp image
+	textDrawer.DrawString(text)
+	imgutil.AddBorders(textImg, conf.fontBorderColor, conf.fontBorderWidth, conf.fontBorderAlphaThresh)
+	textDrawer.Dot = mathDot
+	textDrawer.DrawString(text)
+	imgutil.AddBorders(textImg, borderColorSoft, 1, conf.fontBorderAlphaThresh)
+	imgutil.AddBorders(textImg, borderColorSofter, 1, 149)
+	if debug {
 		fileName := fmt.Sprintf("thumbnail_%s_%s_debug_textlayer.png", conf.baseName, thumb.paddedNumber)
-		destFile, err := os.Create(filepath.Join(conf.destPath, fileName))
-		if err != nil {
+		filePath := filepath.Join(conf.destPath, fileName)
+		if err := savePNG(textImg, filePath); err != nil {
 			return err
 		}
-		png.Encode(destFile, textImg)
 	}
 
-	// draw the outlined text onto the thumbnail
+	textRect := imgutil.OccupiedAreaRect(textImg)
 	textRectAbs := image.Rectangle{
 		Min: image.Point{0,0},
 		Max: textRect.Size(),
 	}
-	destRect := textRectAbs.Bounds().Add(image.Point{X: conf.numPosX, Y:conf.numPosY})
-	log.WithFields(log.Fields{
-		"destrect.min.x": destRect.Min.X,
-		"destrect.min.y": destRect.Min.Y,
-		"textbox.min.x": textRect.Min.X,
-		"textbox.min.y": textRect.Min.Y,
-	}).Debug("overlay settings")
+	//destRect := textRectAbs.Bounds().Add(image.Point{X: conf.numPosX, Y:conf.numPosY})
+	calcX := thumb.image.Bounds().Dx() - textRectAbs.Bounds().Dx() - 25
+	calcY := thumb.image.Bounds().Dy() - textRectAbs.Bounds().Dy() - 25
+	destRect := textRectAbs.Bounds().Add(image.Point{X: calcX, Y: calcY})
+
 	draw.Draw(thumb.image, destRect, textImg, textRect.Min, draw.Over)
-	//draw.Draw(thumb.image, textRect.Bounds().Add(image.Point{X: conf.numPosX, Y: conf.numPosY}), textImg, textRect.Min, draw.Over)
-	//draw.Draw(thumb.image, textImg.Bounds().Add(image.Point{X: conf.numPosX, Y: conf.numPosY}), textImg, image.Point{}, draw.Over)
-	//draw.Draw(thumb.image, textImg.Bounds().Add(image.Point{X: conf.numPosX, Y: conf.numPosY}), textImg, textRect.Min, draw.Over)
 	return nil
 }
 
-func (thumb *thumbnail) export(destPath string) error {
+func (thumb *thumbnail) export() error {
 	fileName := fmt.Sprintf("thumbnail_%s_%s.png", conf.baseName, thumb.paddedNumber)
-	destFile, err := os.Create(filepath.Join(destPath, fileName))
+	filePath := filepath.Join(conf.destPath, fileName)
+	if err := savePNG(thumb.image, filePath); err != nil {
+		return err
+	}
+	return nil
+}
+
+func savePNG(img image.Image, destFile string) error {
+	destFh, err := os.Create(destFile)
+	defer destFh.Close()
 	if err != nil {
 		return err
 	}
-	png.Encode(destFile, thumb.image)
+	if err := png.Encode(destFh, img); err !=nil {
+		return err
+	}
 	return nil
-}
 
-func calcMinRect(img *image.NRGBA) image.Rectangle {
-	var minX, minY, maxX, maxY int
-	var valueFound bool
-
-	imgHeight := img.Bounds().Dy()
-	imgWidth := img.Bounds().Dx()
-
-	valueFound = false
-	for y := 0; y <= imgHeight; y++ {
-		for x := 0; x <= imgWidth; x++ {
-			if !borders.IsEmptyPixel(img, image.Point{X: x, Y: y}) {
-				minY = y
-				valueFound = true
-				break
-			}
-		}
-		if valueFound {
-			break
-		}
-	}
-	valueFound = false
-	for y := imgHeight; y >= 0; y-- {
-		for x := imgWidth; x >= 0; x-- {
-			if !borders.IsEmptyPixel(img, image.Point{X: x, Y: y}) {
-				maxY = y
-				valueFound = true
-				break
-			}
-		}
-		if valueFound {
-			break
-		}
-	}
-
-	valueFound = false
-	for x := 0; x <= imgWidth; x++ {
-		for y := 0; y <= imgHeight; y++ {
-			if !borders.IsEmptyPixel(img, image.Point{X: x, Y: y}) {
-				minX = x
-				valueFound = true
-				break
-			}
-		}
-		if valueFound {
-			break
-		}
-	}
-	valueFound = false
-	for x := imgWidth; x >= 0; x-- {
-		for y := imgHeight; y >= 0; y-- {
-			if !borders.IsEmptyPixel(img, image.Point{X: x, Y: y}) {
-				maxX = x
-				valueFound = true
-				break
-			}
-		}
-		if valueFound {
-			break
-		}
-	}
-
-	//comment
-	log.WithFields(log.Fields{
-		"min.coord": fmt.Sprintf("%d, %d", minX, minY),
-		"min.x":     minX,
-		"min.y":     minY,
-		"max.coord": fmt.Sprintf("%d, %d", maxX, maxY),
-		"max.x":     maxX,
-		"max.y":     maxY,
-	}).Debug("calcMinRect")
-	return image.Rect(minX-1, minY-1, maxX+1, maxY+1)
 }

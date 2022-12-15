@@ -1,12 +1,16 @@
 all: clean build
 
-build:
-	go build -o thumbnailer ./cmd/thumbnailer
+build: build/thumbnailer
+
+build/thumbnailer:
+	go build -o build/thumbnailer ./cmd/thumbnailer
 
 clean: clean-binary clean-outputs
 
 clean-binary:
-	rm ./thumbnailer
+	rm -f ./build/thumbnailer
 
 clean-outputs:
 	rm -rf ./output/*
+
+PHONY: build
