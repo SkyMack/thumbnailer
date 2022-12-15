@@ -25,29 +25,29 @@ import (
 )
 
 const (
-	baseNameFlagName        = "base-name"
-	bgImageFlagName         = "bg-image"
-	destPathFlagName        = "output-dest"
+	baseNameFlagName         = "base-name"
+	bgImageFlagName          = "bg-image"
+	destPathFlagName         = "output-dest"
 	fontBorderAlphaThreshold = "font-border-alpha-thresh"
-	fontBorderColorFlagName = "font-border-color"
-	fontBorderWidthFlagName = "font-border-width"
-	fontColorFlagName       = "font-color"
-	fontSizeFlagName        = "font-size"
-	seqEndFlagName          = "seq-end"
-	seqNumDigitsFlagName    = "seq-num-digits"
-	seqNumPosXFlagname      = "seq-num-pos-x"
-	seqNumPosYFlagname      = "seq-num-pos-y"
-	seqStartFlagName        = "seq-start"
-	textLayerHeightFlagName = "text-layer-height"
-	textLayerWidthFlagName  = "text-layer-width"
+	fontBorderColorFlagName  = "font-border-color"
+	fontBorderWidthFlagName  = "font-border-width"
+	fontColorFlagName        = "font-color"
+	fontSizeFlagName         = "font-size"
+	seqEndFlagName           = "seq-end"
+	seqNumDigitsFlagName     = "seq-num-digits"
+	seqNumPosXFlagname       = "seq-num-pos-x"
+	seqNumPosYFlagname       = "seq-num-pos-y"
+	seqStartFlagName         = "seq-start"
+	textLayerHeightFlagName  = "text-layer-height"
+	textLayerWidthFlagName   = "text-layer-width"
 
-	fontDPI                 = 300
+	fontDPI = 300
 )
 
 var (
-	bgImage *image.NRGBA
-	conf    Config
-	debug bool
+	bgImage    *image.NRGBA
+	conf       Config
+	debug      bool
 	parsedFont *truetype.Font
 )
 
@@ -281,11 +281,11 @@ func setConf(config Config) {
 
 func parseFontFile() error {
 	fontBytes, err := os.ReadFile(conf.fontFilePath)
-	if err!=nil {
+	if err != nil {
 		return err
 	}
 	parsedFont, err = truetype.Parse(fontBytes)
-	if err!=nil {
+	if err != nil {
 		return err
 	}
 
@@ -296,7 +296,7 @@ func parseFontFile() error {
 func generateThumbnails() error {
 	for i := conf.numStart; i <= conf.numEnd; i++ {
 		thumbNail := thumbnail{
-			image: &*bgImage,
+			image:  &*bgImage,
 			number: i,
 		}
 		if err := thumbNail.render(); err != nil {
@@ -370,18 +370,18 @@ func (thumb *thumbnail) render() error {
 	// calc Y level to place the font Drawer dot at, given the font size and DPI
 	y := int(math.Ceil(conf.fontSize * fontDPI / 72))
 	mathDot := fixed.Point26_6{
-		X: fixed.I(0+2+conf.fontBorderWidth),
-		Y: fixed.I(y+((2+conf.fontBorderWidth)*2)),
+		X: fixed.I(0 + 2 + conf.fontBorderWidth),
+		Y: fixed.I(y + ((2 + conf.fontBorderWidth) * 2)),
 	}
 	textDrawer := &font.Drawer{
 		Dst: textImg,
 		Src: conf.fontColor,
 		Face: truetype.NewFace(ft, &truetype.Options{
-			Size: conf.fontSize,
-			DPI: fontDPI,
+			Size:    conf.fontSize,
+			DPI:     fontDPI,
 			Hinting: font.HintingFull,
 		}),
-		Dot:  mathDot,
+		Dot: mathDot,
 	}
 	text := fmt.Sprintf("#%v", thumb.paddedNumber)
 	// draw the sequence number onto the temp image
@@ -401,7 +401,7 @@ func (thumb *thumbnail) render() error {
 
 	textRect := imgutil.OccupiedAreaRect(textImg)
 	textRectAbs := image.Rectangle{
-		Min: image.Point{0,0},
+		Min: image.Point{0, 0},
 		Max: textRect.Size(),
 	}
 	//destRect := textRectAbs.Bounds().Add(image.Point{X: conf.numPosX, Y:conf.numPosY})
@@ -428,7 +428,7 @@ func savePNG(img image.Image, destFile string) error {
 	if err != nil {
 		return err
 	}
-	if err := png.Encode(destFh, img); err !=nil {
+	if err := png.Encode(destFh, img); err != nil {
 		return err
 	}
 	return nil
