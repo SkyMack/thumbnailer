@@ -1,8 +1,6 @@
 package generator
 
 import (
-	"encoding/hex"
-	"errors"
 	"fmt"
 	"image"
 	"image/color"
