@@ -144,25 +144,6 @@ func AddCmdGeneratePng(rootCmd *cobra.Command) {
 	rootCmd.AddCommand(generatePngCmd)
 }
 
-var errInvalidFormat = errors.New("invalid RGB hex code")
-
-// ParseHexColor converts a 6 rune string of hexidecimal characters into a color.NRGBA
-func ParseHexColor(s string) (colr color.NRGBA, err error) {
-	colr.A = 0xff
-	if len([]rune(s)) != 6 {
-		return colr, errInvalidFormat
-	}
-	colrBytes, err := hex.DecodeString(s)
-	if err != nil {
-		return colr, err
-	}
-
-	colr.R = colrBytes[0]
-	colr.G = colrBytes[1]
-	colr.B = colrBytes[2]
-	return
-}
-
 func createConfigFromFlags(flags *pflag.FlagSet) error {
 	baseName, err := flags.GetString(baseNameFlagName)
 	if err != nil {
@@ -225,11 +206,11 @@ func createConfigFromFlags(flags *pflag.FlagSet) error {
 		return err
 	}
 
-	fontBorderColor, err := ParseHexColor(fontBorderColorStr)
+	fontBorderColor, err := imgutil.ParseHexColor(fontBorderColorStr)
 	if err != nil {
 		return err
 	}
-	fontColor, err := ParseHexColor(fontColorStr)
+	fontColor, err := imgutil.ParseHexColor(fontColorStr)
 	if err != nil {
 		return err
 	}
@@ -369,25 +350,27 @@ func (thumb *thumbnail) render() error {
 
 	// calc Y level to place the font Drawer dot at, given the font size and DPI
 	y := int(math.Ceil(conf.fontSize * fontDPI / 72))
-	mathDot := fixed.Point26_6{
+	startDot := fixed.Point26_6{
 		X: fixed.I(0 + 2 + conf.fontBorderWidth),
 		Y: fixed.I(y + ((2 + conf.fontBorderWidth) * 2)),
 	}
 	textDrawer := &font.Drawer{
 		Dst: textImg,
 		Src: conf.fontColor,
-		Face: truetype.NewFace(ft, &truetype.Options{
+		Face: truetype.NewFace(parsedFont, &truetype.Options{
 			Size:    conf.fontSize,
 			DPI:     fontDPI,
 			Hinting: font.HintingFull,
 		}),
-		Dot: mathDot,
+		Dot: startDot,
 	}
 	text := fmt.Sprintf("#%v", thumb.paddedNumber)
 	// draw the sequence number onto the temp image
 	textDrawer.DrawString(text)
+	// add the main text border/outline
 	imgutil.AddBorders(textImg, conf.fontBorderColor, conf.fontBorderWidth, conf.fontBorderAlphaThresh)
-	textDrawer.Dot = mathDot
+	// overlay the text again, for proper blending of text pixels with a non-zero alpha < 255
+	textDrawer.Dot = startDot
 	textDrawer.DrawString(text)
 	imgutil.AddBorders(textImg, borderColorSoft, 1, conf.fontBorderAlphaThresh)
 	imgutil.AddBorders(textImg, borderColorSofter, 1, 149)
@@ -404,7 +387,9 @@ func (thumb *thumbnail) render() error {
 		Min: image.Point{0, 0},
 		Max: textRect.Size(),
 	}
+
 	//destRect := textRectAbs.Bounds().Add(image.Point{X: conf.numPosX, Y:conf.numPosY})
+	// auto lower right corner
 	calcX := thumb.image.Bounds().Dx() - textRectAbs.Bounds().Dx() - 25
 	calcY := thumb.image.Bounds().Dy() - textRectAbs.Bounds().Dy() - 25
 	destRect := textRectAbs.Bounds().Add(image.Point{X: calcX, Y: calcY})
