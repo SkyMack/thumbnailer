@@ -1,3 +1,5 @@
+github.com/SkyMack/clibase v0.0.1 h1:m2hxG+V+9zuQA1tLUbVYzPz/VdWNJOcbhu9/BfySQnA=
+github.com/SkyMack/clibase v0.0.1/go.mod h1:c+3X7a1QIzTSi5roo+JsRSzYyYd5aVdKllAdmGd9y48=
 github.com/SkyMack/imgutils v0.0.2 h1:irD5dv3po4JPDC91KOISJRmXtKh2rKZ0GFJ8TV6NQqY=
 github.com/SkyMack/imgutils v0.0.2/go.mod h1:tw8xzjthFyIVECBkVFKyJdeltzXuvWQxNXeZqcODO0A=
 github.com/cpuguy83/go-md2man/v2 v2.0.2/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
