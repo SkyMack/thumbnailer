@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/SkyMack/thumbnailer/internal/clibase"
+	"github.com/SkyMack/clibase"
 	"github.com/SkyMack/thumbnailer/internal/generator"
 	log "github.com/sirupsen/logrus"
 )

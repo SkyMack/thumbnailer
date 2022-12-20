@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/SkyMack/imgutil"
+	"github.com/SkyMack/imgutils"
 	"github.com/golang/freetype/truetype"
 	"github.com/hashicorp/go-multierror"
 	log "github.com/sirupsen/logrus"
@@ -204,11 +204,11 @@ func createConfigFromFlags(flags *pflag.FlagSet) error {
 		return err
 	}
 
-	fontBorderColor, err := imgutil.ParseHexColor(fontBorderColorStr)
+	fontBorderColor, err := imgutils.ParseHexColor(fontBorderColorStr)
 	if err != nil {
 		return err
 	}
-	fontColor, err := imgutil.ParseHexColor(fontColorStr)
+	fontColor, err := imgutils.ParseHexColor(fontColorStr)
 	if err != nil {
 		return err
 	}
@@ -366,12 +366,12 @@ func (thumb *thumbnail) render() error {
 	// draw the sequence number onto the temp image
 	textDrawer.DrawString(text)
 	// add the main text border/outline
-	imgutil.AddBorders(textImg, conf.fontBorderColor, conf.fontBorderWidth, conf.fontBorderAlphaThresh)
+	imgutils.AddBorders(textImg, conf.fontBorderColor, conf.fontBorderWidth, conf.fontBorderAlphaThresh)
 	// overlay the text again, for proper blending of text pixels with a non-zero alpha < 255
 	textDrawer.Dot = startDot
 	textDrawer.DrawString(text)
-	imgutil.AddBorders(textImg, borderColorSoft, 1, conf.fontBorderAlphaThresh)
-	imgutil.AddBorders(textImg, borderColorSofter, 1, 149)
+	imgutils.AddBorders(textImg, borderColorSoft, 1, conf.fontBorderAlphaThresh)
+	imgutils.AddBorders(textImg, borderColorSofter, 1, 149)
 	if debug {
 		fileName := fmt.Sprintf("thumbnail_%s_%s_debug_textlayer.png", conf.baseName, thumb.paddedNumber)
 		filePath := filepath.Join(conf.destPath, fileName)
@@ -380,7 +380,7 @@ func (thumb *thumbnail) render() error {
 		}
 	}
 
-	textRect := imgutil.OccupiedAreaRect(textImg)
+	textRect := imgutils.OccupiedAreaRect(textImg)
 	textRectAbs := image.Rectangle{
 		Min: image.Point{0, 0},
 		Max: textRect.Size(),
