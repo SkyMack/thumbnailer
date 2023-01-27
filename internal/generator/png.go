@@ -76,7 +76,8 @@ type Config struct {
 }
 
 func init() {
-	if log.GetLevel() == log.DebugLevel {
+	_, debugVarSet := os.LookupEnv("DEBUG")
+	if log.GetLevel() == log.DebugLevel || debugVarSet {
 		debug = true
 	}
 }
@@ -386,10 +387,16 @@ func (thumb *thumbnail) render() error {
 		Max: textRect.Size(),
 	}
 
+	// manual placement
 	//destRect := textRectAbs.Bounds().Add(image.Point{X: conf.numPosX, Y:conf.numPosY})
+
 	// auto lower right corner
+	//calcX := thumb.image.Bounds().Dx() - textRectAbs.Bounds().Dx() - 25
+	//calcY := thumb.image.Bounds().Dy() - textRectAbs.Bounds().Dy() - 25
+
+	// auto upper right corner
 	calcX := thumb.image.Bounds().Dx() - textRectAbs.Bounds().Dx() - 25
-	calcY := thumb.image.Bounds().Dy() - textRectAbs.Bounds().Dy() - 25
+	calcY := textRectAbs.Bounds().Dy() - 80
 	destRect := textRectAbs.Bounds().Add(image.Point{X: calcX, Y: calcY})
 
 	draw.Draw(thumb.image, destRect, textImg, textRect.Min, draw.Over)
