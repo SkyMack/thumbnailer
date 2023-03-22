@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"math"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -20,25 +21,30 @@ import (
 	"github.com/spf13/pflag"
 	"golang.org/x/image/font"
 	"golang.org/x/image/math/fixed"
+	_ "golang.org/x/image/tiff"
 )
 
 const (
-	baseNameFlagName         = "base-name"
-	bgImageFlagName          = "bg-image"
-	destPathFlagName         = "output-dest"
-	fontBorderAlphaThreshold = "font-border-alpha-thresh"
-	fontBorderColorFlagName  = "font-border-color"
-	fontBorderWidthFlagName  = "font-border-width"
-	fontColorFlagName        = "font-color"
-	fontSizeFlagName         = "font-size"
-	seqEndFlagName           = "seq-end"
-	seqNumDigitsFlagName     = "seq-num-digits"
-	seqNumPosXFlagname       = "seq-num-pos-x"
-	seqNumPosYFlagname       = "seq-num-pos-y"
-	seqStartFlagName         = "seq-start"
-	textLayerHeightFlagName  = "text-layer-height"
-	textLayerWidthFlagName   = "text-layer-width"
+	flagNameBaseName = "base-name"
+	flagNameBgImage          = "bg-baseImage"
+	flagNameDestPath         = "output-dest"
+	flagNameFontBorderColor = "font-border-color"
+	flagNameFontBorderWidth = "font-border-width"
+	flagNameFontColor = "font-color"
+	flagNameFontSize     = "font-size"
+	flagNameSeqEnd       = "seq-end"
+	flagNameSeqNumDigits = "seq-num-digits"
+	flagNameSeqNumPosX = "seq-num-pos-x"
+	flagNameSeqNumPosY       = "seq-num-pos-y"
+	flagNameSeqStart            = "seq-start"
+	flagNameStillFilenameExt    = "still-filename-ext"
+	flagNameStillFilenamePrefix = "still-filename-prefix"
+	flagNameStillSrcPath    = "still-src"
+	flagNameTextLayerHeight  = "text-layer-height"
+	flagNameTextLayerWidth   = "text-layer-width"
+	flagNameTitleOverlayPath = "title-overlay-img"
 
+	fontBorderAlphaThreshold = "font-border-alpha-thresh"
 	fontDPI = 300
 )
 
@@ -49,16 +55,24 @@ var (
 	parsedFont *truetype.Font
 )
 
-type thumbnail struct {
-	image        *image.NRGBA
-	paddedNumber string
-	number       int
+func init() {
+	conf = Config{
+		dynamic: ConfigDynamic{},
+		static: ConfigStatic{},
+	}
 }
 
-// Config is used to store the configuration options for the thumbnail generator
+type thumbnail struct {
+	baseImage       *image.NRGBA
+	image           *image.NRGBA
+	paddedSeqNumber string
+	seqNumber       int
+	titleImage      *image.NRGBA
+}
+
+// Config is used to store the persistent configuration options for the thumbnail generator
 type Config struct {
 	baseName              string
-	bgImageFilePath       string
 	destPath              string
 	fontBorderAlphaThresh uint8
 	fontBorderColor       color.NRGBA
@@ -73,6 +87,22 @@ type Config struct {
 	numStart              int
 	textImgHeight         int
 	textImgWidth          int
+
+	dynamic ConfigDynamic
+	static ConfigStatic
+}
+
+// ConfigStatic stores the configuration options related to generating static thumbnails
+type ConfigStatic struct {
+	bgImageFilePath       string
+}
+
+// ConfigDynamic stores the configuration options related to generating dynamic thumbnails
+type ConfigDynamic struct {
+	stillFilenameExt      string
+	stillFilenamePrefix   string
+	stillSourceDirPath    string
+	titleImageFilePath    string
 }
 
 func init() {
@@ -82,77 +112,144 @@ func init() {
 	}
 }
 
-func addGeneratePngFlags(cmdFlags *pflag.FlagSet) {
-	genPngFlags := &pflag.FlagSet{}
+func addPngPersistentFlags(flags *pflag.FlagSet) {
+	pngFlags := &pflag.FlagSet{}
 
-	genPngFlags.String(baseNameFlagName, "", "The base name for the image files (required)")
-	genPngFlags.String(bgImageFlagName, "", "Full path to the background image (required)")
-	genPngFlags.String(destPathFlagName, "", "Full path to the output destination (required)")
-	genPngFlags.Uint8(fontBorderAlphaThreshold, 0, "The alpha value at which we consider a pixel to be empty/convert to a border pixel")
-	genPngFlags.String(fontBorderColorFlagName, "FFFFFF", "Sequence number outline color (6 character RGB hex code)")
-	genPngFlags.Int(fontBorderWidthFlagName, 2, "Sequence number outline thickness (in pixels)")
-	genPngFlags.String(fontColorFlagName, "000000", "Sequence number text color (6 character RGB hex code)")
-	genPngFlags.Float64(fontSizeFlagName, 30, "Font size in points")
-	genPngFlags.Int(seqNumDigitsFlagName, 2, "Number of fixed places in the generated sequence number (ie. how many 0s to pad single digits with)")
-	genPngFlags.Int(seqNumPosXFlagname, 975, "X coordinate the sequence number will be drawn at")
-	genPngFlags.Int(seqNumPosYFlagname, 600, "Y coordinate the sequence number will be drawn at")
-	genPngFlags.Int(seqStartFlagName, 1, "Number to start the sequence with")
-	genPngFlags.Int(seqEndFlagName, 10, "Number to end the sequence on")
-	genPngFlags.Int(textLayerHeightFlagName, 1080, "Height of the temporary image the text is drawn onto; may need to be increased when processing very large images")
-	genPngFlags.Int(textLayerWidthFlagName, 1920, "Width of the temporary image the text is drawn onto; may need to be increased when processing very large images")
+	pngFlags.String(flagNameBaseName, "", "The base name for the baseImage files (required)")
+	pngFlags.String(flagNameDestPath, "", "Full path to the output destination (required)")
+	pngFlags.Uint8(fontBorderAlphaThreshold, 0, "The alpha value at which we consider a pixel to be empty/convert to a border pixel")
+	pngFlags.String(flagNameFontBorderColor, "FFFFFF", "Sequence seqNumber outline color (6 character RGB hex code)")
+	pngFlags.Int(flagNameFontBorderWidth, 2, "Sequence seqNumber outline thickness (in pixels)")
+	pngFlags.String(flagNameFontColor, "000000", "Sequence seqNumber text color (6 character RGB hex code)")
+	pngFlags.Float64(flagNameFontSize, 30, "Font size in points")
+	pngFlags.Int(flagNameSeqNumDigits, 2, "Number of fixed places in the generated sequence seqNumber (ie. how many 0s to pad single digits with)")
+	pngFlags.Int(flagNameSeqNumPosX, 975, "X coordinate the sequence seqNumber will be drawn at")
+	pngFlags.Int(flagNameSeqNumPosY, 600, "Y coordinate the sequence seqNumber will be drawn at")
+	pngFlags.Int(flagNameSeqStart, 1, "Number to start the sequence with")
+	pngFlags.Int(flagNameSeqEnd, 10, "Number to end the sequence on")
+	pngFlags.Int(flagNameTextLayerHeight, 1080, "Height of the temporary baseImage the text is drawn onto; may need to be increased when processing very large images")
+	pngFlags.Int(flagNameTextLayerWidth, 1920, "Width of the temporary baseImage the text is drawn onto; may need to be increased when processing very large images")
 
-	cmdFlags.AddFlagSet(genPngFlags)
+	flags.AddFlagSet(pngFlags)
 }
 
-func markGeneratorPngRequiredFlags(cmd *cobra.Command) {
-	cmd.MarkFlagRequired(baseNameFlagName)
-	cmd.MarkFlagRequired(bgImageFlagName)
-	cmd.MarkFlagRequired(destPathFlagName)
+func markPngRequiredFlags(cmd *cobra.Command) error {
+	if err := cmd.MarkPersistentFlagRequired(flagNameBaseName); err != nil {
+		return err
+	}
+	if err := cmd.MarkPersistentFlagRequired(flagNameDestPath); err != nil {
+		return err
+	}
+
+	return  nil
 }
 
-// AddCmdGeneratePng adds the generatepng subcommand to a cobra.Command
-func AddCmdGeneratePng(rootCmd *cobra.Command) {
-	generatePngCmd := &cobra.Command{
-		Use:   "generatepng",
+// AddCmdPng adds the generatepng subcommand to a cobra.Command
+func AddCmdPng(parentCmd *cobra.Command) {
+	pngCmd := &cobra.Command{
+		Use:   "png",
 		Short: "generate thumbnails in PNG format",
+	}
+	addPngPersistentFlags(pngCmd.PersistentFlags())
+	if err := markPngRequiredFlags(pngCmd); err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Fatal("unable to mark required flags")
+		os.Exit(1)
+	}
+
+	addCmdPngDynamic(pngCmd)
+	addCmdPngStatic(pngCmd)
+
+	parentCmd.AddCommand(pngCmd)
+}
+
+func addPngStaticFlags(flags *pflag.FlagSet) {
+	pngStaticFlags := &pflag.FlagSet{}
+	pngStaticFlags.String(flagNameBgImage, "", "Full path to the background baseImage (required)")
+
+	flags.AddFlagSet(pngStaticFlags)
+}
+
+func addCmdPngStatic(parentCmd *cobra.Command) {
+	pngStaticCmd := &cobra.Command{
+		Use:   "static",
+		Short: "static baseImage composition (the only difference between thumbnails is the overlayed sequence seqNumber)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := createConfigFromFlags(cmd.Flags()); err != nil {
+			if err := conf.setPersistentConfigFromFlags(cmd.Flags()); err != nil {
 				return err
 			}
-			if err := checkConfig(conf); err != nil {
+			if err := conf.setStaticConfigFromFlags(cmd.Flags()); err != nil {
 				return err
 			}
-			if err := importBackground(conf.bgImageFilePath); err != nil {
+			if err := conf.validate(); err != nil {
+				return err
+			}
+			if err := importBackground(conf.static.bgImageFilePath); err != nil {
 				return err
 			}
 			if err := parseFontFile(); err != nil {
 				return err
 			}
 
-			if err := generateThumbnails(); err != nil {
+			if err := generateStaticThumbnails(); err != nil {
 				return err
 			}
 
 			return nil
 		},
 	}
+	addPngStaticFlags(pngStaticCmd.Flags())
 
-	addGeneratePngFlags(generatePngCmd.Flags())
-	markGeneratorPngRequiredFlags(generatePngCmd)
-
-	rootCmd.AddCommand(generatePngCmd)
+	parentCmd.AddCommand(pngStaticCmd)
 }
 
-func createConfigFromFlags(flags *pflag.FlagSet) error {
-	baseName, err := flags.GetString(baseNameFlagName)
+func addPngDynamicFlags(flags *pflag.FlagSet) {
+	pngDynamicFlags := &pflag.FlagSet{}
+	pngDynamicFlags.String(flagNameStillFilenameExt, "still", "Filename extension on all still baseImage files")
+	pngDynamicFlags.String(flagNameStillFilenamePrefix, "E", "Filename prefix on all still baseImage files")
+	pngDynamicFlags.String(flagNameStillSrcPath, "", "Source directory containing all still baseImage files")
+	pngDynamicFlags.String(flagNameTitleOverlayPath, "", "Full path to the title overlay baseImage")
+
+	flags.AddFlagSet(pngDynamicFlags)
+}
+
+func addCmdPngDynamic(parentCmd *cobra.Command) {
+	pngDynamicCmd := &cobra.Command{
+		Use: "dynamic",
+		Short: "dynamic baseImage composition (unique primary baseImage per thumbnail)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := conf.setPersistentConfigFromFlags(cmd.Flags()); err != nil {
+				return err
+			}
+			if err := conf.setDynamicConfigFromFlags(cmd.Flags()); err != nil {
+				return err
+			}
+			if err := conf.validate(); err != nil {
+				return err
+			}
+			if err := parseFontFile(); err != nil {
+				return err
+			}
+
+			if err := generateDynamicThumbnails(); err != nil {
+				return err
+			}
+
+			return nil
+		},
+	}
+	addPngDynamicFlags(pngDynamicCmd.Flags())
+
+	parentCmd.AddCommand(pngDynamicCmd)
+}
+
+func (c *Config) setPersistentConfigFromFlags(flags *pflag.FlagSet) error {
+	baseName, err := flags.GetString(flagNameBaseName)
 	if err != nil {
 		return err
 	}
-	bgImageFilePath, err := flags.GetString(bgImageFlagName)
-	if err != nil {
-		return err
-	}
-	destPath, err := flags.GetString(destPathFlagName)
+	destPath, err := flags.GetString(flagNameDestPath)
 	if err != nil {
 		return err
 	}
@@ -160,47 +257,47 @@ func createConfigFromFlags(flags *pflag.FlagSet) error {
 	if err != nil {
 		return err
 	}
-	fontBorderColorStr, err := flags.GetString(fontBorderColorFlagName)
+	fontBorderColorStr, err := flags.GetString(flagNameFontBorderColor)
 	if err != nil {
 		return nil
 	}
-	fontBorderWidth, err := flags.GetInt(fontBorderWidthFlagName)
+	fontBorderWidth, err := flags.GetInt(flagNameFontBorderWidth)
 	if err != nil {
 		return nil
 	}
-	fontColorStr, err := flags.GetString(fontColorFlagName)
+	fontColorStr, err := flags.GetString(flagNameFontColor)
 	if err != nil {
 		return err
 	}
-	fontSize, err := flags.GetFloat64(fontSizeFlagName)
+	fontSize, err := flags.GetFloat64(flagNameFontSize)
 	if err != nil {
 		return err
 	}
-	numPlaces, err := flags.GetInt(seqNumDigitsFlagName)
+	numPlaces, err := flags.GetInt(flagNameSeqNumDigits)
 	if err != nil {
 		return err
 	}
-	numPosX, err := flags.GetInt(seqNumPosXFlagname)
+	numPosX, err := flags.GetInt(flagNameSeqNumPosX)
 	if err != nil {
 		return err
 	}
-	numPosY, err := flags.GetInt(seqNumPosYFlagname)
+	numPosY, err := flags.GetInt(flagNameSeqNumPosY)
 	if err != nil {
 		return err
 	}
-	seqStart, err := flags.GetInt(seqStartFlagName)
+	seqStart, err := flags.GetInt(flagNameSeqStart)
 	if err != nil {
 		return err
 	}
-	seqEnd, err := flags.GetInt(seqEndFlagName)
+	seqEnd, err := flags.GetInt(flagNameSeqEnd)
 	if err != nil {
 		return err
 	}
-	textLayerHeight, err := flags.GetInt(textLayerHeightFlagName)
+	textLayerHeight, err := flags.GetInt(flagNameTextLayerHeight)
 	if err != nil {
 		return err
 	}
-	textLayerWidth, err := flags.GetInt(textLayerWidthFlagName)
+	textLayerWidth, err := flags.GetInt(flagNameTextLayerWidth)
 	if err != nil {
 		return err
 	}
@@ -214,49 +311,96 @@ func createConfigFromFlags(flags *pflag.FlagSet) error {
 		return err
 	}
 
-	config := Config{
-		baseName:              baseName,
-		bgImageFilePath:       bgImageFilePath,
-		destPath:              destPath,
-		fontBorderAlphaThresh: fontBorderAlphaThreshold,
-		fontBorderColor:       fontBorderColor,
-		fontBorderWidth:       fontBorderWidth,
-		fontColor:             &image.Uniform{C: fontColor},
-		fontFilePath:          filepath.Join("assets", "fonts", "tahomabd.ttf"),
-		fontSize:              fontSize,
-		numDigits:             numPlaces,
-		numPosX:               numPosX,
-		numPosY:               numPosY,
-		numEnd:                seqEnd,
-		numStart:              seqStart,
-		textImgHeight:         textLayerHeight,
-		textImgWidth:          textLayerWidth,
-	}
+	c.baseName =               baseName
+	c.destPath =               destPath
+	c.fontBorderAlphaThresh =  fontBorderAlphaThreshold
+	c.fontBorderColor =        fontBorderColor
+	c.fontBorderWidth =        fontBorderWidth
+	c.fontColor =              &image.Uniform{C: fontColor}
+	c.fontFilePath =           filepath.Join("assets","fonts", "tahomabd.ttf")
+	c.fontSize =               fontSize
+	c.numDigits =              numPlaces
+	c.numPosX =                numPosX
+	c.numPosY =                numPosY
+	c.numEnd =                 seqEnd
+	c.numStart =               seqStart
+	c.textImgHeight =          textLayerHeight
+	c.textImgWidth =           textLayerWidth
 
-	setConf(config)
 	return nil
 }
 
-func checkConfig(config Config) error {
+func (c *Config) setStaticConfigFromFlags(flags *pflag.FlagSet) error {
+	bgImage, err := flags.GetString(flagNameBgImage)
+	if err != nil {
+		return err
+	}
+
+	c.static.bgImageFilePath = bgImage
+
+	return nil
+}
+
+func (c *Config) setDynamicConfigFromFlags(flags *pflag.FlagSet) error {
+	stillFileDirPath, err := flags.GetString(flagNameStillSrcPath)
+	if err != nil {
+		return err
+	}
+	stillFileExt, err := flags.GetString(flagNameStillFilenameExt)
+	if err != nil {
+		return err
+	}
+	stillFilePrefix, err := flags.GetString(flagNameStillFilenamePrefix)
+	if err != nil {
+		return err
+	}
+	titleImgFilePath, err := flags.GetString(flagNameTitleOverlayPath)
+	if err != nil {
+		return err
+	}
+
+	c.dynamic.stillSourceDirPath = stillFileDirPath
+	c.dynamic.stillFilenameExt = stillFileExt
+	c.dynamic.stillFilenamePrefix = stillFilePrefix
+	c.dynamic.titleImageFilePath = titleImgFilePath
+
+	return nil
+}
+
+func (c *Config) validate() error {
 	var result error
 
-	if config.numStart < 0 || config.numEnd <= 0 {
-		result = multierror.Append(result, fmt.Errorf("invalid sequence: start must be a positive number"))
+	if c.numStart < 0 || c.numEnd <= 0 {
+		result = multierror.Append(result, fmt.Errorf("invalid sequence: start must be a positive seqNumber"))
 	}
-	if config.numStart >= config.numEnd {
-		result = multierror.Append(result, fmt.Errorf("invalid sequence: start number is the same as or after the end number"))
+	if c.numStart >= c.numEnd {
+		result = multierror.Append(result, fmt.Errorf("invalid sequence: start seqNumber is the same as or after the end seqNumber"))
 	}
-	if config.numDigits < 0 {
-		result = multierror.Append(result, fmt.Errorf("invalid numFixedPlaces: must be a positive number"))
+	if c.numDigits < 0 {
+		result = multierror.Append(result, fmt.Errorf("invalid numFixedPlaces: must be a positive seqNumber"))
 	}
+
 	return result
 }
 
-func setConf(config Config) {
-	conf = config
-	log.WithFields(log.Fields{
-		"conf": fmt.Sprintf("%+v", conf),
-	}).Debug("running config")
+func (c *Config) validateStatic() error {
+	result := c.validate()
+
+	if c.static.bgImageFilePath == "" {
+		result = multierror.Append(result, fmt.Errorf("no background baseImage file path specified"))
+	}
+
+	return result
+}
+
+func (c *Config) validateDynamic() error {
+	result := c.validate()
+
+	if c.dynamic.titleImageFilePath == "" {
+		result = multierror.Append(result, fmt.Errorf("no title overlay baseImage file path specified"))
+	}
+
+	return result
 }
 
 func parseFontFile() error {
@@ -272,12 +416,12 @@ func parseFontFile() error {
 	return nil
 }
 
-// generateThumbnails renders and saves thumbnails comprised of the given background image and a sequence number
-func generateThumbnails() error {
+// generateStaticThumbnails renders and saves thumbnails comprised of the given background baseImage and a sequence seqNumber
+func generateStaticThumbnails() error {
 	for i := conf.numStart; i <= conf.numEnd; i++ {
 		thumbNail := thumbnail{
-			image:  &*bgImage,
-			number: i,
+			baseImage: bgImage,
+			seqNumber: i,
 		}
 		if err := thumbNail.render(); err != nil {
 			return err
@@ -290,28 +434,91 @@ func generateThumbnails() error {
 	return nil
 }
 
-func importBackground(filepath string) error {
-	fileData, err := os.Open(filepath)
+func generateDynamicThumbnails() error {
+	titleImgPath := conf.dynamic.titleImageFilePath
+	titleImg, err := importImg(titleImgPath)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+			"title_img.path": conf.dynamic.titleImageFilePath,
+		}).Errorf("cannot open title image")
+		return err
+	}
+
+	for i := conf.numStart; i <= conf.numEnd; i++ {
+		imgFilename := fmt.Sprintf("%s%d.%s", conf.dynamic.stillFilenamePrefix, i, conf.dynamic.stillFilenameExt)
+		imgPath := path.Join(conf.dynamic.stillSourceDirPath, imgFilename)
+		img, err := importImg(imgPath)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err,
+				"src_img.path": imgPath,
+				"seq_number": strconv.Itoa(i),
+			}).Errorf("cannot open dynamic thumbnail image")
+			continue
+		}
+		thumbNail := thumbnail{
+			baseImage: img,
+			seqNumber: i,
+			titleImage: titleImg,
+		}
+		if err := thumbNail.render(); err != nil {
+			log.WithFields(log.Fields{
+				"error": err,
+				"src_img.path": imgPath,
+				"seq_number": strconv.Itoa(i),
+				"title_img.path": conf.dynamic.titleImageFilePath,
+			}).Errorf("unable to render thumbnail image")
+			continue
+		}
+		if err := thumbNail.export(); err != nil {
+			log.WithFields(log.Fields{
+				"dst.path": conf.destPath,
+				"error": err,
+				"src_img.path": imgPath,
+				"seq_number": strconv.Itoa(i),
+				"title_img.path": conf.dynamic.titleImageFilePath,
+			}).Errorf("unable to export thumbnail image")
+			continue
+		}
+	}
+
+	return nil
+}
+
+func importBackground(fpath string) error {
+	nrgba, err := importImg(fpath)
 	if err != nil {
 		return err
+	}
+	bgImage = nrgba
+	return nil
+}
+
+func importImg(fpath string) (nrgba *image.NRGBA, err error) {
+	fileData, err := os.Open(fpath)
+	if err != nil {
+		return
 	}
 
 	imageData, _, err := image.Decode(fileData)
 	if err != nil {
-		return err
+		return
 	}
-	bgImage = image.NewNRGBA(imageData.Bounds())
-	draw.Draw(bgImage, bgImage.Bounds(), imageData, image.Point{}, draw.Src)
-	return nil
+
+	nrgba = image.NewNRGBA(imageData.Bounds())
+	draw.Draw(nrgba, nrgba.Bounds(), imageData, image.Point{}, draw.Src)
+
+	return
 }
 
 func (thumb *thumbnail) setPaddedNumberFromNumber() {
-	raw := strconv.Itoa(thumb.number)
+	raw := strconv.Itoa(thumb.seqNumber)
 	rawCharCount := strings.Count(raw, "") - 1
 
 	if conf.numDigits <= 1 || rawCharCount >= conf.numDigits {
-		// No padding required (number is longer than or equal to the number of places, so no leading 0s needed)
-		thumb.paddedNumber = raw
+		// No padding required (seqNumber is longer than or equal to the seqNumber of places, so no leading 0s needed)
+		thumb.paddedSeqNumber = raw
 	}
 
 	paddedNum := raw
@@ -321,23 +528,29 @@ func (thumb *thumbnail) setPaddedNumberFromNumber() {
 
 	log.WithFields(log.Fields{
 		"conf.numDigits":              conf.numDigits,
-		"thumb.number":                thumb.number,
-		"thumb.number.padded":         paddedNum,
-		"thumb.number.raw_char_count": rawCharCount,
+		"thumb.seqNumber":                thumb.seqNumber,
+		"thumb.seqNumber.padded":         paddedNum,
+		"thumb.seqNumber.raw_char_count": rawCharCount,
 	}).Debug("setPaddedNumberFromNumber result")
-	thumb.paddedNumber = paddedNum
+	thumb.paddedSeqNumber = paddedNum
 }
 
-// render creates the image and the number overlay for the thumbnail
+// render creates the baseImage and the seqNumber overlay for the thumbnail
 func (thumb *thumbnail) render() error {
-	// generate padded number string
+	// generate padded seqNumber string
 	thumb.setPaddedNumberFromNumber()
 
-	// create a new, blank image
-	thumb.image = image.NewNRGBA(bgImage.Bounds())
+	// create a new, blank baseImage
+	thumb.image = image.NewNRGBA(thumb.baseImage.Bounds())
 
-	// draw the background image onto the blank
-	draw.Draw(thumb.image, bgImage.Bounds(), bgImage, image.Point{}, draw.Over)
+	// draw the baseImage onto the blank
+	draw.Draw(thumb.image, thumb.image.Bounds(), thumb.baseImage, image.Point{}, draw.Src)
+
+	// if there is a title image, add that layer next
+	if thumb.titleImage != nil {
+		log.Debug("adding title layer")
+		draw.Draw(thumb.image, thumb.image.Bounds(), thumb.titleImage, image.Point{}, draw.Over)
+	}
 
 	borderColorSoft := conf.fontBorderColor
 	borderColorSoft.A = 150
@@ -348,11 +561,13 @@ func (thumb *thumbnail) render() error {
 	textImg := image.NewNRGBA(image.Rect(0, 0, conf.textImgWidth, conf.textImgHeight))
 
 	// calc Y level to place the font Drawer dot at, given the font size and DPI
+	// (the dot for drawing a char starts at the _bottom_ left of the char, so we need enough Y space to fit the char height)
 	y := int(math.Ceil(conf.fontSize * fontDPI / 72))
 	startDot := fixed.Point26_6{
 		X: fixed.I(0 + 2 + conf.fontBorderWidth),
 		Y: fixed.I(y + ((2 + conf.fontBorderWidth) * 2)),
 	}
+
 	textDrawer := &font.Drawer{
 		Dst: textImg,
 		Src: conf.fontColor,
@@ -363,8 +578,8 @@ func (thumb *thumbnail) render() error {
 		}),
 		Dot: startDot,
 	}
-	text := fmt.Sprintf("#%v", thumb.paddedNumber)
-	// draw the sequence number onto the temp image
+	text := fmt.Sprintf("#%v", thumb.paddedSeqNumber)
+	// draw the sequence seqNumber onto the temp image
 	textDrawer.DrawString(text)
 	// add the main text border/outline
 	imgutils.AddBorders(textImg, conf.fontBorderColor, conf.fontBorderWidth, conf.fontBorderAlphaThresh)
@@ -374,7 +589,7 @@ func (thumb *thumbnail) render() error {
 	imgutils.AddBorders(textImg, borderColorSoft, 1, conf.fontBorderAlphaThresh)
 	imgutils.AddBorders(textImg, borderColorSofter, 1, 149)
 	if debug {
-		fileName := fmt.Sprintf("thumbnail_%s_%s_debug_textlayer.png", conf.baseName, thumb.paddedNumber)
+		fileName := fmt.Sprintf("thumbnail_%s_%s_debug_textlayer.png", conf.baseName, thumb.paddedSeqNumber)
 		filePath := filepath.Join(conf.destPath, fileName)
 		if err := savePNG(textImg, filePath); err != nil {
 			return err
@@ -383,16 +598,16 @@ func (thumb *thumbnail) render() error {
 
 	textRect := imgutils.OccupiedAreaRect(textImg)
 	textRectAbs := image.Rectangle{
-		Min: image.Point{0, 0},
+		Min: image.Point{ X:0, Y:0},
 		Max: textRect.Size(),
 	}
 
 	// manual placement
-	//destRect := textRectAbs.Bounds().Add(image.Point{X: conf.numPosX, Y:conf.numPosY})
+	// destRect := textRectAbs.Bounds().Add(baseImage.Point{X: conf.numPosX, Y:conf.numPosY})
 
 	// auto lower right corner
-	//calcX := thumb.image.Bounds().Dx() - textRectAbs.Bounds().Dx() - 25
-	//calcY := thumb.image.Bounds().Dy() - textRectAbs.Bounds().Dy() - 25
+	// calcX := thumb.baseImage.Bounds().Dx() - textRectAbs.Bounds().Dx() - 25
+	// calcY := thumb.baseImage.Bounds().Dy() - textRectAbs.Bounds().Dy() - 25
 
 	// auto upper right corner
 	calcX := thumb.image.Bounds().Dx() - textRectAbs.Bounds().Dx() - 25
@@ -404,7 +619,7 @@ func (thumb *thumbnail) render() error {
 }
 
 func (thumb *thumbnail) export() error {
-	fileName := fmt.Sprintf("thumbnail_%s_%s.png", conf.baseName, thumb.paddedNumber)
+	fileName := fmt.Sprintf("thumbnail_%s_%s.png", conf.baseName, thumb.paddedSeqNumber)
 	filePath := filepath.Join(conf.destPath, fileName)
 	if err := savePNG(thumb.image, filePath); err != nil {
 		return err
@@ -418,6 +633,9 @@ func savePNG(img image.Image, destFile string) error {
 	if err != nil {
 		return err
 	}
+	log.WithFields(log.Fields{
+		"dst.path": destFile,
+	}).Info("saving PNG file")
 	if err := png.Encode(destFh, img); err != nil {
 		return err
 	}

@@ -14,7 +14,7 @@ const (
 func main() {
 	rootCmd := clibase.New(appName, appDescription)
 
-	generator.AddCmdGeneratePng(rootCmd)
+	generator.AddCmdPng(rootCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		log.WithFields(
