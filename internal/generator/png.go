@@ -435,14 +435,22 @@ func generateStaticThumbnails() error {
 }
 
 func generateDynamicThumbnails() error {
-	titleImgPath := conf.dynamic.titleImageFilePath
-	titleImg, err := importImg(titleImgPath)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err,
-			"title_img.path": conf.dynamic.titleImageFilePath,
-		}).Errorf("cannot open title image")
-		return err
+	var (
+		err error
+		titleImg *image.NRGBA
+	)
+
+	titleImg = nil
+	if conf.dynamic.titleImageFilePath != "" {
+		titleImgPath := conf.dynamic.titleImageFilePath
+		titleImg, err = importImg(titleImgPath)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":          err,
+				"title_img.path": conf.dynamic.titleImageFilePath,
+			}).Errorf("cannot open title image")
+			return err
+		}
 	}
 
 	for i := conf.numStart; i <= conf.numEnd; i++ {
