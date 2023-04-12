@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/draw"
 	"image/png"
 	"math"
 	"os"
@@ -19,6 +18,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/image/draw"
 	"golang.org/x/image/font"
 	"golang.org/x/image/math/fixed"
 	_ "golang.org/x/image/tiff"
@@ -46,6 +46,9 @@ const (
 
 	fontBorderAlphaThreshold = "font-border-alpha-thresh"
 	fontDPI                  = 300
+
+	imageFinalHeight = 720
+	imageFinalWidth  = 1280
 )
 
 var (
@@ -627,6 +630,20 @@ func (thumb *thumbnail) render() error {
 }
 
 func (thumb *thumbnail) export() error {
+	log.WithFields(log.Fields{
+		"height": thumb.image.Rect.Max.Y,
+		"width": thumb.image.Rect.Max.X,
+	}).Debug("exporting image")
+	if thumb.image.Rect.Max.X > imageFinalWidth || thumb.image.Rect.Max.Y > imageFinalHeight {
+		log.WithFields(log.Fields{
+			"target.height": imageFinalHeight,
+			"target.width": imageFinalWidth,
+		}).Debug("scaling image")
+		// Scale image to fit within the required dimensions (e.g. 1280x720)
+		scaledImage := image.NewNRGBA(image.Rect(0,0,imageFinalWidth,imageFinalHeight))
+		draw.CatmullRom.Scale(scaledImage, scaledImage.Rect, thumb.image, thumb.image.Bounds(), draw.Over, nil)
+		thumb.image = scaledImage
+	}
 	fileName := fmt.Sprintf("thumbnail_%s_%s.png", conf.baseName, thumb.paddedSeqNumber)
 	filePath := filepath.Join(conf.destPath, fileName)
 	if err := savePNG(thumb.image, filePath); err != nil {
