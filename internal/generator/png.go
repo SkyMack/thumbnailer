@@ -25,27 +25,27 @@ import (
 )
 
 const (
-	flagNameBaseName = "base-name"
-	flagNameBgImage          = "bg-baseImage"
-	flagNameDestPath         = "output-dest"
-	flagNameFontBorderColor = "font-border-color"
-	flagNameFontBorderWidth = "font-border-width"
-	flagNameFontColor = "font-color"
-	flagNameFontSize     = "font-size"
-	flagNameSeqEnd       = "seq-end"
-	flagNameSeqNumDigits = "seq-num-digits"
-	flagNameSeqNumPosX = "seq-num-pos-x"
-	flagNameSeqNumPosY       = "seq-num-pos-y"
+	flagNameBaseName            = "base-name"
+	flagNameBgImage             = "bg-baseImage"
+	flagNameDestPath            = "output-dest"
+	flagNameFontBorderColor     = "font-border-color"
+	flagNameFontBorderWidth     = "font-border-width"
+	flagNameFontColor           = "font-color"
+	flagNameFontSize            = "font-size"
+	flagNameSeqEnd              = "seq-end"
+	flagNameSeqNumDigits        = "seq-num-digits"
+	flagNameSeqNumPosX          = "seq-num-pos-x"
+	flagNameSeqNumPosY          = "seq-num-pos-y"
 	flagNameSeqStart            = "seq-start"
 	flagNameStillFilenameExt    = "still-filename-ext"
 	flagNameStillFilenamePrefix = "still-filename-prefix"
-	flagNameStillSrcPath    = "still-src"
-	flagNameTextLayerHeight  = "text-layer-height"
-	flagNameTextLayerWidth   = "text-layer-width"
-	flagNameTitleOverlayPath = "title-overlay-img"
+	flagNameStillSrcPath        = "still-src"
+	flagNameTextLayerHeight     = "text-layer-height"
+	flagNameTextLayerWidth      = "text-layer-width"
+	flagNameTitleOverlayPath    = "title-overlay-img"
 
 	fontBorderAlphaThreshold = "font-border-alpha-thresh"
-	fontDPI = 300
+	fontDPI                  = 300
 )
 
 var (
@@ -58,7 +58,7 @@ var (
 func init() {
 	conf = Config{
 		dynamic: ConfigDynamic{},
-		static: ConfigStatic{},
+		static:  ConfigStatic{},
 	}
 }
 
@@ -89,20 +89,20 @@ type Config struct {
 	textImgWidth          int
 
 	dynamic ConfigDynamic
-	static ConfigStatic
+	static  ConfigStatic
 }
 
 // ConfigStatic stores the configuration options related to generating static thumbnails
 type ConfigStatic struct {
-	bgImageFilePath       string
+	bgImageFilePath string
 }
 
 // ConfigDynamic stores the configuration options related to generating dynamic thumbnails
 type ConfigDynamic struct {
-	stillFilenameExt      string
-	stillFilenamePrefix   string
-	stillSourceDirPath    string
-	titleImageFilePath    string
+	stillFilenameExt    string
+	stillFilenamePrefix string
+	stillSourceDirPath  string
+	titleImageFilePath  string
 }
 
 func init() {
@@ -141,7 +141,7 @@ func markPngRequiredFlags(cmd *cobra.Command) error {
 		return err
 	}
 
-	return  nil
+	return nil
 }
 
 // AddCmdPng adds the generatepng subcommand to a cobra.Command
@@ -216,7 +216,7 @@ func addPngDynamicFlags(flags *pflag.FlagSet) {
 
 func addCmdPngDynamic(parentCmd *cobra.Command) {
 	pngDynamicCmd := &cobra.Command{
-		Use: "dynamic",
+		Use:   "dynamic",
 		Short: "dynamic baseImage composition (unique primary baseImage per thumbnail)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := conf.setPersistentConfigFromFlags(cmd.Flags()); err != nil {
@@ -311,21 +311,21 @@ func (c *Config) setPersistentConfigFromFlags(flags *pflag.FlagSet) error {
 		return err
 	}
 
-	c.baseName =               baseName
-	c.destPath =               destPath
-	c.fontBorderAlphaThresh =  fontBorderAlphaThreshold
-	c.fontBorderColor =        fontBorderColor
-	c.fontBorderWidth =        fontBorderWidth
-	c.fontColor =              &image.Uniform{C: fontColor}
-	c.fontFilePath =           filepath.Join("assets","fonts", "tahomabd.ttf")
-	c.fontSize =               fontSize
-	c.numDigits =              numPlaces
-	c.numPosX =                numPosX
-	c.numPosY =                numPosY
-	c.numEnd =                 seqEnd
-	c.numStart =               seqStart
-	c.textImgHeight =          textLayerHeight
-	c.textImgWidth =           textLayerWidth
+	c.baseName = baseName
+	c.destPath = destPath
+	c.fontBorderAlphaThresh = fontBorderAlphaThreshold
+	c.fontBorderColor = fontBorderColor
+	c.fontBorderWidth = fontBorderWidth
+	c.fontColor = &image.Uniform{C: fontColor}
+	c.fontFilePath = filepath.Join("assets", "fonts", "tahomabd.ttf")
+	c.fontSize = fontSize
+	c.numDigits = numPlaces
+	c.numPosX = numPosX
+	c.numPosY = numPosY
+	c.numEnd = seqEnd
+	c.numStart = seqStart
+	c.textImgHeight = textLayerHeight
+	c.textImgWidth = textLayerWidth
 
 	return nil
 }
@@ -436,7 +436,7 @@ func generateStaticThumbnails() error {
 
 func generateDynamicThumbnails() error {
 	var (
-		err error
+		err      error
 		titleImg *image.NRGBA
 	)
 
@@ -459,32 +459,32 @@ func generateDynamicThumbnails() error {
 		img, err := importImg(imgPath)
 		if err != nil {
 			log.WithFields(log.Fields{
-				"error": err,
+				"error":        err,
 				"src_img.path": imgPath,
-				"seq_number": strconv.Itoa(i),
+				"seq_number":   strconv.Itoa(i),
 			}).Errorf("cannot open dynamic thumbnail image")
 			continue
 		}
 		thumbNail := thumbnail{
-			baseImage: img,
-			seqNumber: i,
+			baseImage:  img,
+			seqNumber:  i,
 			titleImage: titleImg,
 		}
 		if err := thumbNail.render(); err != nil {
 			log.WithFields(log.Fields{
-				"error": err,
-				"src_img.path": imgPath,
-				"seq_number": strconv.Itoa(i),
+				"error":          err,
+				"src_img.path":   imgPath,
+				"seq_number":     strconv.Itoa(i),
 				"title_img.path": conf.dynamic.titleImageFilePath,
 			}).Errorf("unable to render thumbnail image")
 			continue
 		}
 		if err := thumbNail.export(); err != nil {
 			log.WithFields(log.Fields{
-				"dst.path": conf.destPath,
-				"error": err,
-				"src_img.path": imgPath,
-				"seq_number": strconv.Itoa(i),
+				"dst.path":       conf.destPath,
+				"error":          err,
+				"src_img.path":   imgPath,
+				"seq_number":     strconv.Itoa(i),
 				"title_img.path": conf.dynamic.titleImageFilePath,
 			}).Errorf("unable to export thumbnail image")
 			continue
@@ -535,7 +535,7 @@ func (thumb *thumbnail) setPaddedNumberFromNumber() {
 	}
 
 	log.WithFields(log.Fields{
-		"conf.numDigits":              conf.numDigits,
+		"conf.numDigits":                 conf.numDigits,
 		"thumb.seqNumber":                thumb.seqNumber,
 		"thumb.seqNumber.padded":         paddedNum,
 		"thumb.seqNumber.raw_char_count": rawCharCount,
@@ -606,7 +606,7 @@ func (thumb *thumbnail) render() error {
 
 	textRect := imgutils.OccupiedAreaRect(textImg)
 	textRectAbs := image.Rectangle{
-		Min: image.Point{ X:0, Y:0},
+		Min: image.Point{X: 0, Y: 0},
 		Max: textRect.Size(),
 	}
 
